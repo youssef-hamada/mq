@@ -67,3 +67,44 @@ export async function dispatchTask(
   );
   return taskId;
 }
+
+export function createWorker() {
+  const worker = new Worker<TaskData>(
+    config.queues.main,
+    async (job: Job<TaskData>) => {
+      const { taskId, action, payload, attempts } = job.data;
+      logger.info(
+        `Processing task ${taskId} with action ${action} and attempts ${attempts}`,
+      );
+
+      const processingTime = 500 + Math.random() * 2500;
+      await new Promise((resolve) => setTimeout(resolve, processingTime));
+
+      if (Math.random() < 0.2) {
+        throw new Error(`Simulated failure for task ${taskId}`);
+      }
+
+      if (action == "forage" && Math.random() < 0.3) {
+        throw new Error(`Simulated failure for task ${taskId} during forage`);
+      }
+
+      const result: TaskResult = {
+        taskId,
+        success: true,
+        processedAt: new Date(),
+        attempts: attempts + 1,
+      };
+
+      logger.info(
+        `Task ${taskId} processed successfully with action ${action}`,
+      );
+
+      return result;
+    },
+    {
+      connection: config.redis,
+      concurrency: config.worker.concurrency,
+      lockDuration: 30000,
+    },
+  );
+}
